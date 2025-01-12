@@ -1,0 +1,65 @@
+dataset/
+__pycache__/
+data/
+ckpt/
+
+
+# Ignore all log files
+*.log
+
+# Ignore all cache files
+*.cache
+
+# Ignore all DS_Store files
+.DS_Store
+
+# Ignore all HTML files
+*.html
+
+# Ignore all PNG images
+*.png
+
+# Ignore all JPEG images
+*.jpg
+*.jpeg
+
+# Ignore all GIF images
+*.gif
+
+# Ignore all BMP images
+*.bmp
+
+# Ignore all TIFF images
+*.tiff
+*.tif
+
+# Ignore all RAW image files
+*.raw
+*.cr2
+*.nef
+*.arw
+*.orf
+*.sr2
+*.dng
+
+# Ignore all WEBP images
+*.webp
+
+# Ignore all HEIF images
+*.heif
+*.heic
+
+# Ignore all SVG images
+*.svg
+
+# Ignore all ICO images
+*.ico
+
+# Ignore all PSD files
+*.psd
+
+# Ignore all EXIF metadata files (usually embedded in JPEG)
+*.exif
+
+# Ignore any image file with a specific extension, if needed
+*.image_extension
