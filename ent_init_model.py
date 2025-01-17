@@ -3,7 +3,7 @@ import torch
 import dgl
 
 
-class EntInit(nn.Module):
+class   EntInit(nn.Module):
     def __init__(self, args):
         super(EntInit, self).__init__()
         self.args = args

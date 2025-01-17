@@ -99,7 +99,7 @@ def split_known(triples):
         unknown.append(triples[i])
     return known, unknown
 
-def read_triplet(path):
+def read_triplet_nell(path):
     id2ent = set()
     id2rel = set()
     triplets = []
@@ -141,10 +141,96 @@ def read_triplet(path):
 
     return id2ent, id2rel, triplets, ent2id, rel2id ,rel_info, pair_info,list_spanning,triplets2id
 
+def read_triplet_fb(path):
+    id2ent = set()
+    id2rel = set()
+    triplets = []
+    list_spanning = []
+    rel_info = defaultdict(list)
+    pair_info = defaultdict(list)
+    dicOfEntities={}
+    ent_type={}
+    type_ids ={}
+    dicOfEntitiesIds={}
+    # Read file and process lines
+    with open(path, 'r') as f:
+        for line in f:
+            h, r, t = line.strip().split('\t')
+            id2ent.update([h, t])  # Add head and tail entities (set prevents duplicates)
+            id2rel.add(r)          # Add relation
+            triplets.append((h, r, t))
+            classify_by_type_entity(dicOfEntities,r,h,t)
+    type_ids = {type_en :id for id , type_en in enumerate(dicOfEntities.keys())}
+
+    # Convert sets to lists to preserve order
+    id2ent = sorted(id2ent)  
+    id2rel = sorted(id2rel)  
+
+    # Map entities and relations to unique IDs
+    ent2id = {ent: idx for idx, ent in enumerate(id2ent)}
+    rel2id = {rel: idx for idx, rel in enumerate(id2rel)}
+
+    # Map triplets to ID-based format and populate rel_info and pair_info
+    dicOfEntitiesIds = convert_to_ids(dicOfEntities, ent2id, type_ids)
+    ent_type = {ent: type_id for type_id, entities in dicOfEntitiesIds.items() for ent in entities}
+    triplets = [(ent2id[h], rel2id[r], ent2id[t]) for h, r, t in triplets]
+    triplets2id = {tri: idx for idx, tri in enumerate(triplets)}
+    for h, r, t in triplets:
+        rel_info[(h, t)].append(r)  # Store all relations for a (head, tail) pair
+        pair_info[r].append((h, t))  # Store all (head, tail) pairs for a relation
+    G = igraph.Graph.TupleList(np.array(triplets)[:, 0::2])
+    G_ent = igraph.Graph.TupleList(np.array(triplets)[:, 0::2], directed = True)
+    spanning = G_ent.spanning_tree()
+    G_ent.delete_edges(spanning.get_edgelist())
+    for e in spanning.es:
+        e1,e2 = e.tuple
+        e1 = spanning.vs[e1]["name"]
+        e2 = spanning.vs[e2]["name"]
+        list_spanning.append((e1,e2))
+
+    return id2ent, id2rel, triplets, ent2id, rel2id ,rel_info, pair_info,list_spanning,triplets2id,dicOfEntitiesIds,ent_type
+def convert_to_ids(dicOfEntities, ent2id ,type_ids):
+    """
+    Convert entities in dicOfEntities to their corresponding IDs.
+
+    Args:
+        dicOfEntities (dict): Dictionary where keys are types and values are lists of entities.
+        ent2id (dict): Dictionary mapping entities to unique IDs.
+
+    Returns:
+        dict: A new dictionary with the same keys (types), but entities replaced with their IDs.
+    """
+    dicOfEntitiesIds = {}
+
+    for type_key, entities in dicOfEntities.items():
+        # Convert entities to their IDs using ent2id
+        dicOfEntitiesIds[type_ids[type_key]] = [ent2id[ent] for ent in entities if ent in ent2id]
+    
+    return dicOfEntitiesIds
+
+
+def classify_by_type_entity(dicOfEntities, relation, head, tail):
+    types = relation.strip().split('.')
+    if len(types) == 1:  # Single-part relation
+        t1 = types[0].strip().split('/')
+        # print(f" lenght of types is {len(t1)}")
+        if len(t1) > 2:  # Ensure t1[2] exists
+            dicOfEntities.setdefault(t1[1], []).append(head)
+        if len(t1) > 3:  # Ensure t1[3] exists
+            dicOfEntities.setdefault(t1[2], []).append(tail)
+    else:  # Multi-part relation
+        t1 = types[0].strip().split('/')
+        t2 = types[1].strip().split('/')
+        if len(t1) > 2:
+            dicOfEntities.setdefault(t1[1], []).append(head)
+        if len(t2) > 2:
+            dicOfEntities.setdefault(t2[1], []).append(tail)
+
+
 
 def remove_duplicate(x):
 	    return list(dict.fromkeys(x))
-def divid_entities(entities , en2id ):
+def divid_entities_by_type_nell(entities , en2id ):
      dicOfEntities={}
      dicOfEntitiesIds={}
      type_id = {}
@@ -163,6 +249,7 @@ def divid_entities(entities , en2id ):
           ent_type[val] =type_id[typeOfEn] 
     #  print (typeOfEn+"\n")
      return dicOfEntities , dicOfEntitiesIds,ent_type
+
 def exrtract_relation_in_types_entities(triple_entities, en_dic_id):
     inner_relations_for_every_type = {}
     outer_recived_relations_for_every_type = {}
@@ -205,7 +292,7 @@ def exrtract_relation_in_types_entities(triple_entities, en_dic_id):
     
 
     return inner_relations_for_every_type,outer_recived_relations_for_every_type,outer_sent_relations_for_every_type
-def generate_group_triples(dic, triples):
+def generate_group_triples(dic, triples,type_ent):
     """
     Generate triples of the form (k1, rel, k2) from a dictionary and a list of triples.
     
@@ -222,15 +309,13 @@ def generate_group_triples(dic, triples):
     inner_relations = defaultdict(set)  # For intra-group relations
     output_relations = defaultdict(set)  # For intra-group relations
     input_relations = defaultdict(set)  # For intra-group relations
-    for group, entities in dic.items():
-        for entity in entities:
-            entity_to_group[entity] = group
+   
 
     # Generate (k1, rel, k2) triples
     group_triples = []
     for e1, rel, e2 in triples:
-        k1 = entity_to_group.get(e1)  # Find the group for e1
-        k2 = entity_to_group.get(e2)  # Find the group for e2
+        k1 = type_ent[e1]  # Find the group for e1
+        k2 = type_ent[e2]  # Find the group for e2
 
 
         if k1 is not None and k2 is not None:  # Only create triples if both entities are mapped
@@ -244,6 +329,51 @@ def generate_group_triples(dic, triples):
 
 
     return group_triples ,inner_relations,output_relations,input_relations
+from collections import defaultdict
+
+def generate_group_triples_v1(triples, type_ent, num_rel):
+    """
+    Generate group-level triples and intra-group/outgoing/incoming relations.
+
+    Args:
+        triples (list): A list of triples of the form (e1, rel, e2).
+        type_ent (dict): A dictionary mapping entities (e1, e2, ...) to their groups (k1, k2, ...).
+        num_rel (int): Total number of relations.
+
+    Returns:
+        tuple: 
+            - group_triples (set): A set of triples of the form (k1, rel_score, k2).
+            - inner_relations (defaultdict): Relations within the same group (k1 -> relations).
+            - output_relations (defaultdict): Relations leaving each group (k1 -> relations).
+            - input_relations (defaultdict): Relations entering each group (k2 -> relations).
+    """
+    # Initialize relation tracking dictionaries
+    group_relations = defaultdict(list)  # (k1, k2) -> list of rel
+    inner_relations = defaultdict(set)   # k1 -> set of relations within the group
+    output_relations = defaultdict(set)  # k1 -> set of outgoing relations
+    input_relations = defaultdict(set)   # k2 -> set of incoming relations
+
+    # Iterate through triples
+    for e1, rel, e2 in triples:
+        k1 = type_ent.get(e1)  # Group of e1
+        k2 = type_ent.get(e2)  # Group of e2
+
+        if k1 is not None and k2 is not None:  # Both entities are mapped to groups
+            if k1 != k2:
+                group_relations[(k1, k2)].append(rel)
+                output_relations[k1].add(rel)
+                input_relations[k2].add(rel)
+            else:
+                inner_relations[k1].add(rel)
+
+    # Generate group triples with relation scores
+    group_triples = {
+        (k1, len(rels) / num_rel, k2)  # Score is the proportion of relations over total
+        for (k1, k2), rels in group_relations.items()
+    }
+
+    return group_triples, inner_relations, output_relations, input_relations
+
 def exrtract_relation_in_types_entities1(triple_entities, en_dic_id):
     entity_type_triples = []
     inner_relations_for_every_type = {}
@@ -306,12 +436,13 @@ def create_graph(triples):
      # Extract node and edge information
     src_nodes = [t[0] for t in triples]  # subjects
     dst_nodes = [t[2] for t in triples]  # objects
-    edge_types = [t[1] for t in triples]  # relations
+    weight =torch.tensor([t[1] for t in triples] ) # relations
 
     # Create a DGL graph
     g = dgl.heterograph({
-        ('node', 'relation_type', 'node'): (src_nodes, dst_nodes)
+        ('node', 'weight', 'node'): (src_nodes, dst_nodes)
     })
+    g.edata["weight"] = weight
     
     return g
 def create_main_graph(triples):
@@ -351,7 +482,8 @@ def add_model_feature_to_main_graph(feat, main_graph, enttype):
     )
 
     # Step 3: Assign features using the type indices
-    main_graph.ndata['feat'] = torch.cat((feat[type_indices],main_graph.ndata['feat']) ,dim=1)
+    # main_graph.ndata['feat'] = torch.cat((feat[type_indices],main_graph.ndata['feat']) ,dim=1)
+    main_graph.ndata['feat'] = feat[type_indices]+ main_graph.ndata['feat']
 
     # Debug: Print summary of assigned features
     # print(f"Assigned features to {num_nodes} nodes. Feature shape: {main_graph.ndata['feat'].shape}")

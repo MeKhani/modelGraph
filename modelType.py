@@ -15,7 +15,7 @@ class TYPMODEL(nn.Module):
         self.epsilon = 2.0
 
         self.gamma = torch.Tensor([args.margin])  
-        self.rel_proj = nn.Linear(args.emb_dim, args.emb_dim*2, bias = True)   
+        self.rel_proj = nn.Linear(args.emb_dim, args.emb_dim, bias = True)   
         self.embedding_range = torch.Tensor([(self.gamma.item() + self.epsilon) / args.emb_dim])
         self.relation_embedding = nn.Parameter(torch.zeros(self.nrelation, self.args.dimension_relation))
         nn.init.uniform_(
@@ -45,7 +45,9 @@ class TYPMODEL(nn.Module):
     def forward(self,model_graph, main_graph,ent_type):
         self.ent_init(main_graph)
         embeddings, _ =self.model_graph(model_graph,model_graph.ndata["feat"],)
+        # print(f"embedding size of model alocated is {embeddings.shape}")
         main_graph =add_model_feature_to_main_graph(embeddings,main_graph,ent_type)
+        # print(f"feature size of main graph is  {main_graph.ndata['feat'].shape}")
         ent_embediing = self.rgcn(main_graph)
         return ent_embediing, self.relation_embedding
 

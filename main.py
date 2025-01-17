@@ -31,8 +31,8 @@ def main():
     train_data = TrainData(args,train_path)
     # print(f"number relation in train data is {args.num_rel}")
     # print(f"number relation in train data is {args.num_rel}")
-    valid_data = TrainData(args,valid_path)
-    path = args.data_path + args.data_name + "/"
+    args.num_rel= train_data.num_relations
+    valid_data = TrainData(args,valid_path, valdiation_time=True)
    
     # embedding  = train_data.train_model_graph()
 
@@ -48,12 +48,13 @@ def main():
     epochs = args.num_epoch
     valid_epochs = args.validation_epoch
     num_neg = args.num_neg
+    args.input_feat_model_graph =train_data.model_graph.ndata["feat"].shape[1]
     type_model = TYPMODEL(args)
     loss_fn = torch.nn.MarginRankingLoss(margin = args.margin, reduction = 'mean')
     optimizer1 = torch.optim.Adam(type_model.parameters(), lr = args.learning_rate)
     pbar = tqdm(range(epochs))
     total_loss = 0
-    args.input_feat_model_graph =train_data.model_graph.ndata["feat"] 
+    
     # return 
     for epoch in pbar:
         optimizer1.zero_grad()
@@ -62,7 +63,8 @@ def main():
 
         msg = torch.tensor(msg)
         sup = torch.tensor(sup)
-        msg_graph = create_main_graph(msg)
+        # msg_graph = create_main_graph(msg)
+        args.input_feat_model_graph =train_data.model_graph.ndata["feat"].shape[1]
         emb_ent ,emb_rel = type_model(train_data.model_graph,train_data.graph,train_data.ent_type)
         # print(f"emb_ent : { emb_ent}")
         # print(f"emb_rel : { emb_rel}")

@@ -1,10 +1,12 @@
 from tool import (
-    read_triplet,
-    divid_entities,
+    read_triplet_nell,
+    read_triplet_fb,
+    divid_entities_by_type_nell,
     create_graph,
     add_feature_to_graph_nodes,
     add_feature_to_graph_edges,
     generate_group_triples ,
+    generate_group_triples_v1 ,
     create_main_graph,
 	add_model_feature_to_main_graph,
 	remove_duplicate ,
@@ -23,26 +25,34 @@ from model import (
     loss_function,
 )
 import os
+
 class TrainData():
-    def __init__(self, args,path):
-        print("Loading train data...")
+    def __init__(self, args,path, valdiation_time = False):
+        print(f"Loading {path} data...")
         # Read and process triplets
-        id2ent, id2rel, self.triplets, en2id, rel2id,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id = read_triplet(path)
-        endic, en_dic_id,self.ent_type = divid_entities(id2ent, en2id)
+        if "nell" in args.data_name.lower() :
+              id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id = read_triplet_nell(path)
+              endic, en_dic_id,self.ent_type = divid_entities_by_type_nell(id2ent, en2id)
+        elif "fb" in args.data_name.lower():
+              id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,en_dic_id,self.ent_type = read_triplet_fb(path)
+        
+        self.num_relations = args.num_rel if valdiation_time else len(id2rel)
+            
          # Extract relations and create graph
         self.graph  = create_main_graph(self.triplets) 
-        entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples(en_dic_id,self.triplets)
+        # entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples(en_dic_id,self.triplets,self.ent_type)
+        entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples_v1(self.triplets,self.ent_type,self.num_relations)
         model_graph = create_graph(entity_type_triples)
+       
         # Add features to the graph
-        self.num_relations = len(id2rel)
         self.num_ent = self.graph.num_nodes()
-        args.num_rel = self.num_relations
         self.num_triplets = len(self.triplets)
         # print("number relations:", num_relations)
-        model_graph = add_feature_to_graph_nodes(model_graph, inner_rel,output_relations,input_relations, self.num_relations)
-        self.model_graph = add_feature_to_graph_edges(model_graph, entity_type_triples, self.num_relations)
+        self.model_graph = add_feature_to_graph_nodes(model_graph, inner_rel,output_relations,input_relations, self.num_relations)
+        # self.model_graph = add_feature_to_graph_edges(model_graph, entity_type_triples, self.num_relations)
+        
         self.node_features = model_graph.ndata["feat"]
-        self.edge_features = model_graph.edata["rel_feat"]
+        # self.edge_features = model_graph.edata["rel_feat"]
         self.args =args
         self.adj_true = model_graph.adjacency_matrix().to_dense()
         self.filter_dict = {}

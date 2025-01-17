@@ -45,7 +45,7 @@ def evaluate(my_model, target, epoch, init_emb_ent, init_emb_rel, relation_tripl
         print(f"Hits@10: {hit10:.3f}")
         print(f"Hits@1: {hit1:.3f}")
 
-def evaluate1(my_model, target,):
+def evaluate1( my_model, target,):
     with torch.no_grad():
         my_model.eval()
         # msg = torch.tensor(target.msg_triplets).cuda()

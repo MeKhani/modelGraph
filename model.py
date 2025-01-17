@@ -28,6 +28,22 @@ class GCNWithEdgeFeatures(nn.Module):
         # Second GCN layer
         h = self.conv2(graph, h, edge_weight=edge_weights)
         return h
+class GraphAutoencoderGNN(nn.Module):
+    def __init__(self,args,):
+        super(GraphAutoencoderGNN, self).__init__()
+        in_feats =args.input_feat_model_graph
+        print(f"input feature is  in gnn {in_feats}")
+        hidden_feats =args.dimension_entity
+        out_feats =args.dimension_entity
+        self.encoder = GraphSAGE(in_feats, hidden_feats, out_feats)
+        self.decoder = DotProductDecoder()
+
+    def forward(self, graph, features):
+        # Encode
+        z = self.encoder(graph, features)
+        # Decode
+        adj_pred = self.decoder(z)
+        return z, adj_pred
 
 class GraphSAGE(nn.Module):
     def __init__(self, in_feats, hidden_feats, out_feats):
@@ -36,7 +52,9 @@ class GraphSAGE(nn.Module):
         self.conv2 = SAGEConv(hidden_feats, out_feats, 'mean')
 
     def forward(self, graph, node_feats):
+        print(f"feature size in graph sage is : {node_feats.shape}")
         h = self.conv1(graph, node_feats)
+
         h = F.relu(h)
         h = self.conv2(graph, h)
         return h
@@ -154,21 +172,7 @@ class GraphAutoencoder(nn.Module):
         return z, adj_pred
 def loss_function(adj_pred, adj_true):
     return F.binary_cross_entropy(adj_pred, adj_true)
-class GraphAutoencoderGNN(nn.Module):
-    def __init__(self,args,):
-        super(GraphAutoencoderGNN, self).__init__()
-        in_feats =args.input_feat_model_graph
-        hidden_feats =args.dimension_entity
-        out_feats =args.dimension_entity
-        self.encoder = GraphSAGE(in_feats, hidden_feats, out_feats)
-        self.decoder = DotProductDecoder()
 
-    def forward(self, graph, features):
-        # Encode
-        z = self.encoder(graph, features)
-        # Decode
-        adj_pred = self.decoder(z)
-        return z, adj_pred
 class DotProductDecoder(nn.Module):
     def forward(self, z):
         # Dot product to predict edges
