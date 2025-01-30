@@ -7,7 +7,7 @@ from tqdm import tqdm
 from train_valid_data import TrainData ,ValidationData
 from tool import set_seed ,generate_neg ,create_main_graph
 from initialize import initialize
-from evaluation import evaluate1
+from evaluation import evaluate1,write_evaluation_result
 from my_parser import parse
 from ingram_model import InGram
 from modelType import TYPMODEL
@@ -39,6 +39,7 @@ def main():
     # print(f"the embedding is size  {embedding.shape}")
     if not args.no_write:
         os.makedirs(f"./dataset/ckpt/{args.exp}/{args.data_name}", exist_ok=True)
+        os.makedirs(f"dataset/result/{args.data_name}/", exist_ok=True)
     file_format = f"lr_{args.learning_rate}_dim_{args.dimension_entity}_{args.dimension_relation}" + \
                 f"_bin_{args.num_bin}_total_{args.num_epoch}_every_{args.validation_epoch}" + \
                 f"_neg_{args.num_neg}_layer_{args.num_layer_ent}_{args.num_layer_rel}" + \
@@ -54,9 +55,13 @@ def main():
     optimizer1 = torch.optim.Adam(type_model.parameters(), lr = args.learning_rate)
     pbar = tqdm(range(epochs))
     total_loss = 0
+    best_eval_rst = {'MR':0 ,'MRR': 0, 'Hits@10': 0, 'Hits@3': 0, 'Hits@1': 0,'epoch':0 }
+    is_better_result = False
+    clear_first =True
     
     # return 
     for epoch in pbar:
+        is_better_result= False
         optimizer1.zero_grad()
         msg, sup = train_data.split_transductive(0.75)
         # init_emb_ent, init_emb_rel, relation_triplets = initialize(train_data, msg, d_e, d_r, B,add_feat= True)
@@ -65,7 +70,7 @@ def main():
         sup = torch.tensor(sup)
         # msg_graph = create_main_graph(msg)
         args.input_feat_model_graph =train_data.model_graph.ndata["feat"].shape[1]
-        emb_ent ,emb_rel = type_model(train_data.model_graph,train_data.graph,train_data.ent_type)
+        emb_ent ,emb_rel = type_model(train_data.model_graph,train_data.graph,train_data.rel_graph,train_data.ent_type)
         # print(f"emb_ent : { emb_ent}")
         # print(f"emb_rel : { emb_rel}")
         pos_scores = type_model.score(emb_ent, emb_rel, sup)
@@ -89,7 +94,16 @@ def main():
             # val_init_emb_ent, val_init_emb_rel, val_relation_triplets = initialize(validation_data, validation_data.msg_triplets, \
                                                                                     # d_e, d_r, B)
 
-            evaluate1(type_model, valid_data)
+            result = evaluate1(type_model, valid_data,epoch)
+            if result['MRR'] > best_eval_rst['MRR']:
+                        best_eval_rst = result
+                        is_better_result= True
+
+
+            result_best ={f"result in {epoch}":result,"best result in {best_step}":best_eval_rst}if is_better_result else {f"result in {epoch}":result} 
+            write_evaluation_result(clear_first ,result_best,f"dataset/result/{args.data_name}/result.json")
+            clear_first =False
+
 
             if not args.no_write:
                 torch.save({'model_state_dict': type_model.state_dict(), \

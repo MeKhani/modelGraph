@@ -1,6 +1,7 @@
 from tool import (
     read_triplet_nell,
     read_triplet_fb,
+    read_triplet_fb_v1,
     divid_entities_by_type_nell,
     create_graph,
     add_feature_to_graph_nodes,
@@ -10,6 +11,9 @@ from tool import (
     create_main_graph,
 	add_model_feature_to_main_graph,
 	remove_duplicate ,
+      weidner_dgl_graph,
+      weidner_dgl_graph_torch_fast,
+      WiDNeR,
     
 )
 from torch.optim import Adam
@@ -34,9 +38,15 @@ class TrainData():
               id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id = read_triplet_nell(path)
               endic, en_dic_id,self.ent_type = divid_entities_by_type_nell(id2ent, en2id)
         elif "fb" in args.data_name.lower():
-              id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,en_dic_id,self.ent_type = read_triplet_fb(path)
+            #   id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,en_dic_id,self.ent_type = read_triplet_fb(path)
+              id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,self.ent_type = read_triplet_fb_v1(path)
+            #   print(f"lenght of type of entities is {len(en_dic_id)}")
         
         self.num_relations = args.num_rel if valdiation_time else len(id2rel)
+        print(f"then number of realtion is {len(rel2id)}")
+        # rel_graph  = weidner_dgl_graph(self.triplets,self.pair_info)
+        self.rel_graph  = weidner_dgl_graph_torch_fast(self.pair_info, args)
+        print(self.rel_graph)
             
          # Extract relations and create graph
         self.graph  = create_main_graph(self.triplets) 
@@ -48,6 +58,10 @@ class TrainData():
         self.num_ent = self.graph.num_nodes()
         self.num_triplets = len(self.triplets)
         # print("number relations:", num_relations)
+        
+        # rel_net=WiDNeR(path)
+        # print(rel_net)
+
         self.model_graph = add_feature_to_graph_nodes(model_graph, inner_rel,output_relations,input_relations, self.num_relations)
         # self.model_graph = add_feature_to_graph_edges(model_graph, entity_type_triples, self.num_relations)
         

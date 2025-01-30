@@ -109,7 +109,8 @@ class RGCN(nn.Module):
     def __init__(self, args):
         super(RGCN, self).__init__()
 
-        self.emb_dim = args.dimension_entity
+        # self.emb_dim = args.dimension_entity
+        self.emb_dim = args.dimension_entity*2
         self.num_rel = args.num_rel
         self.num_bases = args.num_bases
         self.num_layers = args.num_layers

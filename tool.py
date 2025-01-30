@@ -1,10 +1,12 @@
 import numpy as np
+import pandas as pd 
 import scipy.sparse as sp
 import torch
 import time
 import random
 import dgl
 import os
+import csv
 from collections import defaultdict
 import igraph
 
@@ -189,6 +191,126 @@ def read_triplet_fb(path):
         list_spanning.append((e1,e2))
 
     return id2ent, id2rel, triplets, ent2id, rel2id ,rel_info, pair_info,list_spanning,triplets2id,dicOfEntitiesIds,ent_type
+
+def read_triplet_fb_v1(path):
+    id2ent = set()
+    id2rel = set()
+    triplets = []
+    list_spanning = []
+    rel_info = defaultdict(list)
+    pair_info = defaultdict(list)
+    dicOfEntities={}
+    ent_type={}
+    type_ids ={}
+    dicOfEntitiesIds={}
+    # Read file and process lines
+    path= path.replace(".txt",".tsv")
+    with open(path, 'r', newline='', encoding='utf-8') as tsv_file:
+        reader = csv.reader(tsv_file, delimiter='\t')  # Specify '\t' as the delimiter
+        for row in reader:
+            if len(row) == 3:  # Ensure it has exactly 3 columns
+                h, r, t = row
+                id2ent.update([h, t])  # Add head and tail entities (set prevents duplicates)
+                id2rel.add(r)          # Add relation
+                triplets.append((h, r, t))
+    ent_type1 ,type_ids= classify_by_type_entity_v1(path)
+   
+    # Convert sets to lists to preserve order
+    print(f"number of type is {len(type_ids)}")
+    id2ent = sorted(id2ent)  
+    id2rel = sorted(id2rel)  
+
+    # Map entities and relations to unique IDs
+    ent2id = {ent: idx for idx, ent in enumerate(id2ent)}
+    rel2id = {rel: idx for idx, rel in enumerate(id2rel)}
+    print(f"the number of entites is {len(ent2id)}")
+
+    # Map triplets to ID-based format and populate rel_info and pair_info
+
+    ent_type ={id: type_ids[ent_type1[ent]] if ent in ent_type1 else len(type_ids) for ent, id in ent2id.items()}
+    print(f"the number of entites type  is {len(ent_type)}")
+    triplets = [(ent2id[h], rel2id[r], ent2id[t]) for h, r, t in triplets]
+    triplets2id = {tri: idx for idx, tri in enumerate(triplets)}
+    for h, r, t in triplets:
+        rel_info[(h, t)].append(r)  # Store all relations for a (head, tail) pair
+        pair_info[r].append((h, t))  # Store all (head, tail) pairs for a relation
+    G = igraph.Graph.TupleList(np.array(triplets)[:, 0::2])
+    G_ent = igraph.Graph.TupleList(np.array(triplets)[:, 0::2], directed = True)
+    spanning = G_ent.spanning_tree()
+    G_ent.delete_edges(spanning.get_edgelist())
+    for e in spanning.es:
+        e1,e2 = e.tuple
+        e1 = spanning.vs[e1]["name"]
+        e2 = spanning.vs[e2]["name"]
+        list_spanning.append((e1,e2))
+
+    return id2ent, id2rel, triplets, ent2id, rel2id ,rel_info, pair_info,list_spanning,triplets2id,ent_type
+def classify_by_type_entity_v1(path):
+    """
+    This function reads entity-type mappings from files and assigns unique IDs to each type.
+    
+    Args:
+        path (str): The path to the dataset file (train.tsv or valid.tsv).
+    
+    Returns:
+        dict: A dictionary mapping entities to their types.
+        dict: A dictionary mapping types to unique IDs.
+    """
+    en_type = {}  # Map of entities to their types
+    type_ids = {}  # Map of types to unique IDs
+    count = 0  # Counter for assigning unique IDs to types
+      # Process the dev file (shared logic for train and valid cases)
+    if "train" in path:
+        dev_path_type = path.replace("train.tsv", "dev-ents-class.txt")
+    elif "valid" in path:
+        dev_path_type = path.replace("valid.tsv", "dev-ents-class.txt")
+    
+    with open(dev_path_type, 'r') as f:
+        for line in f:
+            en, en_ty = line.strip().split('\t')
+            # Only add to en_type if entity is not already mapped
+            if en not in en_type:
+                en_type[en] = en_ty
+            if en_ty not in type_ids:  # Assign a unique ID if type is new
+                type_ids[en_ty] = count
+                count += 1
+
+    # Determine the path to the type file
+    if "train" in path:
+        path_type1 = path.replace("train.tsv", "train-ents-class.txt")
+        path_type2 = path.replace("train.tsv", "valid-ents-class.txt")
+    elif "valid" in path:
+        path_type1 = path.replace("valid.tsv", "valid-ents-class.txt")
+        path_type2 = path.replace("valid.tsv", "train-ents-class.txt")
+    else:
+        raise ValueError("Invalid file path. Must contain 'train' or 'valid'.")
+
+    # Process the first file (train or valid)
+    with open(path_type1, 'r') as f:
+       for line in f:
+            en, en_ty = line.strip().split('\t')
+            # Only add to en_type if entity is not already mapped
+            if en not in en_type:
+                en_type[en] = en_ty
+            if en_ty not in type_ids:  # Assign a unique ID if type is new
+                type_ids[en_ty] = count
+                count += 1
+    with open(path_type2, 'r') as f:
+       for line in f:
+            en, en_ty = line.strip().split('\t')
+            # Only add to en_type if entity is not already mapped
+            if en not in en_type:
+                en_type[en] = en_ty
+            if en_ty not in type_ids:  # Assign a unique ID if type is new
+                type_ids[en_ty] = count
+                count += 1
+
+  
+
+    return en_type, type_ids
+
+      
+
 def convert_to_ids(dicOfEntities, ent2id ,type_ids):
     """
     Convert entities in dicOfEntities to their corresponding IDs.
@@ -482,8 +604,8 @@ def add_model_feature_to_main_graph(feat, main_graph, enttype):
     )
 
     # Step 3: Assign features using the type indices
-    # main_graph.ndata['feat'] = torch.cat((feat[type_indices],main_graph.ndata['feat']) ,dim=1)
-    main_graph.ndata['feat'] = feat[type_indices]+ main_graph.ndata['feat']
+    main_graph.ndata['feat'] = torch.cat((feat[type_indices],main_graph.ndata['feat']) ,dim=1)
+    # main_graph.ndata['feat'] = feat[type_indices]+ main_graph.ndata['feat']
 
     # Debug: Print summary of assigned features
     # print(f"Assigned features to {num_nodes} nodes. Feature shape: {main_graph.ndata['feat'].shape}")
@@ -548,6 +670,216 @@ def add_feature_to_graph_edges(graph, entity_type_triples, num_relations):
     graph.edata["rel_feat"] = rel_feat
 
     return graph
+
+
+def weidner_dgl_graph(triples, pair_info):
+    """
+    Constructs a directed, weighted relation-relation graph using DGL.
+
+    Args:
+        triples (list of tuples): List of (head, relation, tail) triples from the KG.
+
+    Returns:
+        dgl.DGLGraph: A directed, weighted graph where nodes are relations,
+                      and edge weights represent relation co-occurrences.
+    """
+    relation_to_triples = defaultdict(list)  # Store triples grouped by relation
+    relation_to_id = {}  # Unique ID mapping for each relation
+    relation_edges = []  # List of relation edges (source, target)
+    edge_weights = []  # List of edge weights
+
+    # # Group triples by relation
+    # for h, r, t in triples:
+    #     relation_to_triples[r].append((h, t))
+    relation_to_triples = pair_info
+
+    relations = list(relation_to_triples.keys())
+
+    # Assign unique IDs to each relation (as nodes in DGL)
+    # relation_to_id = {r: i for i, r in enumerate(relations)}
+
+    # Iterate over all pairs of relations to compute weights
+    for ra in relations:
+        for rb in relations:
+            if ra == rb:
+                continue  # Skip self-relations for now
+            
+            direct_count = 0
+            indirect_count = 0
+            
+            ra_pairs = set(relation_to_triples[ra])
+            rb_pairs = set(relation_to_triples[rb])
+
+            # Compute direct and indirect connections
+            for h1, t1 in ra_pairs:
+                for h2, t2 in rb_pairs:
+                    if t1 == h2:  # Direct connection
+                        direct_count += 1
+                    elif h1 == h2 or t1 == t2:  # Indirect connection
+                        indirect_count += 1
+
+            weight_ra_rb = direct_count + indirect_count
+            if weight_ra_rb > 0:
+                relation_edges.append((ra, rb))
+                edge_weights.append(weight_ra_rb)
+
+    # Create a DGL graph
+    src_nodes, dst_nodes = zip(*relation_edges) if relation_edges else ([], [])
+    g = dgl.graph((torch.tensor(src_nodes), torch.tensor(dst_nodes)))
+
+    # Assign edge weights as a feature
+    g.edata['weight'] = torch.tensor(edge_weights, dtype=torch.float32)
+
+    # Assign relation names as node features
+    g.ndata['relation'] = torch.tensor(list(relation_to_id.values()))
+
+    return g  # Return graph and relation mapping
+
+
+import dgl
+import torch
+from collections import defaultdict
+
+def weidner_dgl_graph_torch_fast( pair_info,args, device="cpu"):
+    """
+    Constructs a directed, weighted relation-relation graph using DGL with PyTorch optimizations.
+    
+    Args:
+        triples (list of tuples): List of (head, relation, tail) triples from the KG.
+        pair_info (dict): Dictionary mapping relations to entity pairs (head, tail).
+        device (str): 'cpu' or 'cuda' for GPU acceleration.
+    
+    Returns:
+        dgl.DGLGraph: A directed, weighted graph where nodes are relations,
+                      and edge weights represent relation co-occurrences.
+    """
+    # Extract unique relations & map them to node IDs
+    relations = list(pair_info.keys())
+    num_relations = len(relations)
+    # relation_to_id = {r: i for i, r in enumerate(relations)}
+
+    # Convert pair_info into tensor-based mappings for speed
+    relation_entity_pairs = {
+        r: torch.tensor(list(pairs), dtype=torch.long, device=device) for r, pairs in pair_info.items()
+    }
+
+    # Create adjacency matrix in PyTorch (Sparse Tensor for memory efficiency)
+    adj_matrix = torch.zeros((num_relations, num_relations), dtype=torch.int32, device=device)
+
+    # Convert relation mappings to index-based format for fast computation
+    relation_sets = {r: set(map(tuple, pairs.tolist())) for r, pairs in relation_entity_pairs.items()}
+
+    # **Optimized Direct & Indirect Computation Using Matrices**
+    for i, ra in enumerate(relations):
+        ra_pairs = relation_sets[ra]
+
+        for j, rb in enumerate(relations):
+            if i == j:
+                continue  # Skip self-relations
+            
+            rb_pairs = relation_sets[rb]
+
+            # Convert sets to Torch tensors
+            if len(ra_pairs) == 0 or len(rb_pairs) == 0:
+                continue  # Skip empty relations
+
+            ra_pairs_tensor = relation_entity_pairs[ra]
+            rb_pairs_tensor = relation_entity_pairs[rb]
+
+            ra_heads, ra_tails = ra_pairs_tensor[:, 0], ra_pairs_tensor[:, 1]
+            rb_heads, rb_tails = rb_pairs_tensor[:, 0], rb_pairs_tensor[:, 1]
+
+            # **Compute Direct & Indirect Weights (Matrix Multiplication)**
+            direct_count = (ra_tails.unsqueeze(1) == rb_heads.unsqueeze(0)).sum().item()
+            indirect_count = (ra_heads.unsqueeze(1) == rb_heads.unsqueeze(0)).sum().item() + \
+                             (ra_tails.unsqueeze(1) == rb_tails.unsqueeze(0)).sum().item()
+
+            weight = direct_count + indirect_count
+            if weight > 0:
+                adj_matrix[i, j] = weight
+
+    # **Convert Adjacency Matrix to DGL Graph (Efficiently)**
+    src_nodes, dst_nodes = adj_matrix.nonzero(as_tuple=True)
+    edge_weights = adj_matrix[src_nodes, dst_nodes].float()
+
+    g = dgl.graph((src_nodes, dst_nodes), device=device)
+
+    # Assign edge weights
+    g.edata['weight'] = edge_weights
+    g.ndata['feat'] = torch.randn(num_relations, args.emb_dim, device=device)
+
+    return g  # Return graph 
+
+
+
+
+
+
+def WiDNeR(structured_triples):
+    structured_triples = structured_triples.replace(".txt",".tsv")
+    structured_triples_ = pd.read_csv(structured_triples, header=None, names=['head','relation', 'tail'], delimiter='\t')
+
+
+    ## different relations - direct
+    result_direct = structured_triples_.merge(structured_triples_, left_on='tail', right_on='head', how='inner')
+    diff_rels_direct = result_direct.loc[result_direct['relation_x'] != result_direct['relation_y']]
+    diff_rels_direct.drop_duplicates(inplace=True)
+    diff_rels_direct = diff_rels_direct.groupby(['relation_x', 'relation_y']).size().to_frame('#direct').reset_index()
+
+    ## different relations - shared_head
+    result_shared_head = structured_triples_.merge(structured_triples_, left_on='head', right_on='head', how='inner')
+    diff_rels_shared_head = result_shared_head.loc[result_shared_head['relation_x'] != result_shared_head['relation_y']]
+    diff_rels_shared_head.drop_duplicates(inplace=True)
+    diff_rels_shared_head = diff_rels_shared_head.groupby(['relation_x', 'relation_y']).size().to_frame('#shared_head').reset_index()
+
+    ## different relations - shared_tail
+    result_shared_tail = structured_triples_.merge(structured_triples_, left_on='tail', right_on='tail', how='inner')
+    diff_rels_shared_tail = result_shared_tail.loc[result_shared_tail['relation_x'] != result_shared_tail['relation_y']]
+    diff_rels_shared_tail.drop_duplicates(inplace=True)
+    diff_rels_shared_tail = diff_rels_shared_tail.groupby(['relation_x', 'relation_y']).size().to_frame('#shared_tail').reset_index()
+
+    ## combine different relations - direct, shared_head, and shared_tail
+    diff_rels = diff_rels_direct.merge(diff_rels_shared_head, on=['relation_x', 'relation_y'], how='outer')
+    diff_rels = diff_rels.merge(diff_rels_shared_tail, on=['relation_x', 'relation_y'], how='outer')
+    diff_rels.fillna(0, inplace=True)
+
+
+    ## same relations - direct
+    same_rels_direct = result_direct.loc[(result_direct['relation_x'] == result_direct['relation_y']) & ((result_direct['head_x'] != result_direct['tail_x']) | (result_direct['head_x'] != result_direct['tail_y'])) ]
+    same_rels_direct.drop_duplicates(inplace=True)
+    same_rels_direct = same_rels_direct.groupby(['relation_x', 'relation_y']).size().to_frame('#direct').reset_index()
+
+
+    ## same relations - shared_head
+    same_rels_shared_head = result_shared_head.loc[(result_shared_head['relation_x'] == result_shared_head['relation_y']) & (result_shared_head['tail_x'] != result_shared_head['tail_y'])]
+    same_rels_shared_head.drop_duplicates(inplace=True)
+    same_rels_shared_head = same_rels_shared_head.groupby(['relation_x', 'relation_y']).size().to_frame('#shared_head').reset_index()
+    same_rels_shared_head['#shared_head'] = same_rels_shared_head['#shared_head'].map(lambda x: x/2)
+
+
+    ## same relations - shared_tail
+    same_rels_shared_tail = result_shared_tail.loc[(result_shared_tail['relation_x'] == result_shared_tail['relation_y']) & (result_shared_tail['head_x'] != result_shared_tail['head_y'])]
+    same_rels_shared_tail.drop_duplicates(inplace=True)
+    same_rels_shared_tail = same_rels_shared_tail.groupby(['relation_x', 'relation_y']).size().to_frame('#shared_tail').reset_index()
+    same_rels_shared_tail['#shared_tail'] = same_rels_shared_tail['#shared_tail'].map(lambda x: x/2)
+
+
+    ## combine same relations - direct, shared_head, and shared_tail
+    same_rels = same_rels_direct.merge(same_rels_shared_head, on=['relation_x', 'relation_y'], how='outer')
+    same_rels = same_rels.merge(same_rels_shared_tail, on=['relation_x', 'relation_y'], how='outer')
+    same_rels.fillna(0, inplace=True)
+
+    ## combine different and same relations
+    diff_same = pd.concat([diff_rels, same_rels], ignore_index=True)
+
+    diff_same['weight'] = diff_same['#direct'] + diff_same['#shared_head'] + diff_same['#shared_tail']
+
+    rel_rel_net = diff_same.drop(columns=['#direct', '#shared_head', '#shared_tail'])
+
+    return rel_rel_net
+
+
+
 def set_seed(seed=1):
     """Set the seed for reproducibility."""
     np.random.seed(seed)

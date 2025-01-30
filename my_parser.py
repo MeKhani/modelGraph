@@ -6,7 +6,8 @@ def parse(test=False):
     parser.add_argument('--data_path', default = "dataset/", type = str)
     # parser.add_argument('--data_name', default = 'NELL-995-v1', type = str)
     # parser.add_argument('--data_name', default = 'nell_v1', type = str)
-    parser.add_argument('--data_name', default = 'fb237_v1', type = str)
+    # parser.add_argument('--data_name', default = 'fb237_v1', type = str)
+    parser.add_argument('--data_name', default = 'FB15k-237', type = str)
     parser.add_argument('--exp', default = 'exp', type = str)
     parser.add_argument('-m', '--margin', default = 2, type = float)
     parser.add_argument('-lr', '--learning_rate', default=5e-4, type = float)
@@ -38,7 +39,7 @@ def parse(test=False):
 
 
     parser.add_argument('--name', default='fb237_v1_transe', type=str)
-    parser.add_argument('--tb_log_dir', '-tb_log_dir', default='../dataset/deep-con/tb_log', type=str)
+    parser.add_argument('--tb_log_dir', '-tb_log_dir', default='../dataset/model_graph/tb_log', type=str)
     parser.add_argument('--gpu', default='cpu', type=str)
     parser.add_argument('--metatrain_bs', default=64, type=int)
     parser.add_argument('--num_train_subgraph', default=100)

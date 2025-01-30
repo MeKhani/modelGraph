@@ -1,6 +1,8 @@
 import torch
 from tool import get_rank, get_metrics
 from tqdm import tqdm
+import json
+
 
 def evaluate(my_model, target, epoch, init_emb_ent, init_emb_rel, relation_triplets):
     with torch.no_grad():
@@ -45,18 +47,19 @@ def evaluate(my_model, target, epoch, init_emb_ent, init_emb_rel, relation_tripl
         print(f"Hits@10: {hit10:.3f}")
         print(f"Hits@1: {hit1:.3f}")
 
-def evaluate1( my_model, target,):
+def evaluate1( my_model, target,epoch):
     with torch.no_grad():
         my_model.eval()
         # msg = torch.tensor(target.msg_triplets).cuda()
         # sup = torch.tensor(target.sup_triplets).cuda()
         # msg = torch.tensor(target.msg_triplets)
         # sup = torch.tensor(target.sup_triplets)
-        emb_ent, emb_rel = my_model(target.model_graph,target.graph,target.ent_type)
+        emb_ent, emb_rel = my_model(target.model_graph,target.graph, target.rel_graph,target.ent_type)
 
         head_ranks = []
         tail_ranks = []
         ranks = []
+        result ={}
         triplets=torch.tensor(target.triplets)
         for triplet in triplets:
             triplet = triplet.unsqueeze(dim = 0)
@@ -89,3 +92,17 @@ def evaluate1( my_model, target,):
         print(f"MRR: {mrr:.3f}")
         print(f"Hits@10: {hit10:.3f}")
         print(f"Hits@1: {hit1:.3f}")
+        result['MR']= mr
+        result['MRR']= mrr
+        result['Hits@10']= hit10
+        result['Hits@3']= hit3
+        result['Hits@1']= hit1
+        result['epoch']= epoch
+        return result
+def write_evaluation_result( clear_first,results, path):
+      if clear_first :
+          with open(path,"w") as f:
+              pass
+      
+      with open(path, "a") as f:  # Open the file in append mode
+        f.write(json.dumps(results) + "\n")  # Write the data as a single JSON line
