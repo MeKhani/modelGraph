@@ -752,7 +752,9 @@ def weidner_dgl_graph_torch_fast( pair_info,args, device="cpu"):
     Returns:
         dgl.DGLGraph: A directed, weighted graph where nodes are relations,
                       and edge weights represent relation co-occurrences.
+                      
     """
+    
     # Extract unique relations & map them to node IDs
     relations = list(pair_info.keys())
     num_relations = len(relations)
@@ -806,7 +808,7 @@ def weidner_dgl_graph_torch_fast( pair_info,args, device="cpu"):
 
     # Assign edge weights
     g.edata['weight'] = edge_weights
-    g.ndata['feat'] = torch.randn(num_relations, args.emb_dim, device=device)
+    g.ndata['feat'] = torch.ones(num_relations, args.emb_dim, device=device)
 
     return g  # Return graph 
 
@@ -919,3 +921,85 @@ def get_metrics(rank):
 	hit1 = np.sum(rank < 2) / len(rank)
 	return mr, mrr, hit10, hit3, hit1
 
+
+
+
+
+def extract_triples(all_data_pd):
+    """
+    Extracts triples (x_index, relation, y_index) and assigns unique IDs to entities and relations.
+    
+    Args:
+        all_data_pd (pd.DataFrame): DataFrame with ['x_index', 'relation', 'y_index', 'x_type']
+
+    Returns:
+        list: Triples with relation IDs
+        dict: Mapping of entity indices to type IDs
+        dict: Pair information mapping relation to (x, y) pairs
+        dict: Mapping (x, y) to list of relations (rel_info)
+        int: Number of unique relations
+        list: Spanning tree edges
+    """
+
+    # ✅ Unique ID mappings for entity types & relations
+    ent_type_id = {etype: idx for idx, etype in enumerate(all_data_pd["x_type"].unique())}
+    ent_x_id = {en: idx for idx, en in enumerate(all_data_pd["x_name"].unique())}
+    ent_y_id = {en: idx for idx, en in enumerate(all_data_pd["y_name"].unique())}
+    relations_id = {rel: idx for idx, rel in enumerate(all_data_pd["relation"].unique())}
+    num_rel = len(relations_id)  # Count unique relations
+    all_en = set(ent_x_id.keys()).union(set(ent_y_id.keys()))
+    ent_id = {en: idx for idx, en in enumerate(all_en)}
+
+
+    # ✅ Extract triples with numerical relation IDs (FAST)
+    triples = all_data_pd[['x_name', 'relation', 'y_name']].to_numpy()
+    triples_id = [(ent_id[x], relations_id[r],ent_id[y]) for x, r, y in triples]
+    triplets2id = {tuple(tri): idx for idx, tri in enumerate(triples_id)}
+    print(f"the number entityies is {len(ent_id)}")
+
+    # ✅ Efficient relation-to-pair mapping
+    pair_info = defaultdict(set)
+    rel_info = defaultdict(set)  
+
+    for x, r, y in triples_id:
+        pair_info[r].add((x, y))  # Store relation-specific (x, y) pairs
+        rel_info[(x, y)].add(r)  # Store all relations for (x, y)
+
+    # ✅ Extract entity-type mapping (no duplicates)
+    ent_type_x = {ent_id[row['x_name']]: ent_type_id[row['x_type']] for _, row in all_data_pd[['x_name', 'x_type']].drop_duplicates().iterrows()}
+    ent_type_y= {ent_id[row['y_name']]: ent_type_id[row['y_type']] for _, row in all_data_pd[['y_name', 'y_type']].drop_duplicates().iterrows()}
+    # Merge keys from both dictionaries and assign new unique indices
+    all_types = set(ent_type_x.keys()).union(set(ent_type_y.keys()))
+    print(f"the number of ent_type_x  {len(ent_type_x)} ")
+    print(f"the number of ent_type_y  {len(ent_type_y)} ")
+    print(f"size of  all_type is {len(all_types)}")
+
+    # Create a new dictionary with unique indices
+    ent_type = {**ent_type_x, **ent_type_y}
+    print(f"all_type is {ent_type}")
+    print(f"the number of entity type is : {len(ent_type)}")
+    print(f"the number of triplest is : {len(triples)}")
+    # print(f"the numer of entity type id is : {len(ent_type_id)}")
+
+    # ✅ Build Graph & Compute Spanning Tree
+    list_spanning = []
+    graph_data = np.array(triples_id)[:, [0, 2]]  # Extract (head, tail) pairs
+    G_ent = igraph.Graph.TupleList(graph_data, directed=True)
+    spanning_tree = G_ent.spanning_tree()
+    G_ent.delete_edges(spanning_tree.get_edgelist())
+
+    # ✅ Extract Spanning Tree Edges
+    list_spanning = [(spanning_tree.vs[e.source]["name"], spanning_tree.vs[e.target]["name"]) for e in spanning_tree.es]
+
+    return triples_id, ent_type, pair_info, rel_info, num_rel, list_spanning,triplets2id
+
+
+   
+
+
+    # # Convert defaultdict to regular dictionary
+    # print(f"entity type is {clean_dict}")
+    # print(f"entity type is id  {ent_type}")
+
+    
+    

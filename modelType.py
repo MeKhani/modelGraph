@@ -31,7 +31,8 @@ class TYPMODEL(nn.Module):
         self.ent_init = EntInit(args).to(args.gpu)
         # self.model_graph = GraphAutoencoderGNN(args)
         self.model_graph = WeightedGraphAutoEncoder(args)
-        self.rel_graph_model= WeightedGraphAutoEncoder1(args)
+        if args.add_rel_graph==1:
+             self.rel_graph_model= WeightedGraphAutoEncoder1(args)
         self.rgcn = RGCN(args).to(args.gpu)
         # self.kge_model = KGEModel(args).to(args.gpu)
         self.model_func = {
@@ -49,7 +50,10 @@ class TYPMODEL(nn.Module):
     def forward(self,model_graph, main_graph, rel_graph,ent_type):
         self.ent_init(main_graph)
         node_embeddings, _ =self.model_graph(model_graph,model_graph.ndata["feat"],)
-        rel_embedding ,_ =  self.rel_graph_model(rel_graph,rel_graph.ndata["feat"] )
+        if self.args.add_rel_graph==1:
+             rel_embedding ,_ =  self.rel_graph_model(rel_graph,rel_graph.ndata["feat"] )
+        else:
+             rel_embedding= self.rel_proj(self.relation_embedding)
         # print(f"embedding size of model alocated is {embeddings.shape}")
         main_graph =add_model_feature_to_main_graph(node_embeddings,main_graph,ent_type)
         # print(f"feature size of main graph is  {main_graph.ndata['feat'].shape}")
@@ -63,10 +67,10 @@ class TYPMODEL(nn.Module):
         tail_idxs = triplets[..., 2]
         head_embs = emb_ent[head_idxs.to(torch.int64)]
         tail_embs = emb_ent[tail_idxs.to(torch.int64)]
-        rel_embs = self.rel_proj(emb_rel[rel_idxs.to(torch.int64)]) 
+        rel_emb = emb_rel[[rel_idxs.to(torch.int64)]]
         # output = (head_embs * rel_embs * tail_embs).sum(dim = -1)
         
-        output = self.model_func[self.args.score_fun](head_embs, rel_embs, tail_embs)
+        output = self.model_func[self.args.score_fun](head_embs, rel_emb, tail_embs)
         return output
     def DistMult(self, head, relation, tail):
         

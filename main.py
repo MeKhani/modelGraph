@@ -4,7 +4,8 @@ import torch
 from torch.optim import Adam
 import pandas as pd
 from tqdm import tqdm
-from train_valid_data import TrainData ,ValidationData
+from sklearn.model_selection import train_test_split
+from train_valid_data import TrainData ,TrainDataPrimeKg
 from tool import set_seed ,generate_neg ,create_main_graph
 from initialize import initialize
 from evaluation import evaluate1,write_evaluation_result
@@ -25,14 +26,24 @@ def main():
     # Parse arguments and set seed
     args = parse()
     set_seed()
-    # Load data Train Data and train  graph 
-    train_path = os.path.join(args.data_path, args.data_name, "train.txt")
-    valid_path = os.path.join(args.data_path, args.data_name, "valid.txt")
-    train_data = TrainData(args,train_path)
+
+    # Load data Train Data and train  graph  
+    if args.mainData == True:
+         all_prime_kg = pd.read_csv(args.data_path+args.data_name+"/kg.csv")
+         _, partial_data= train_test_split(all_prime_kg, test_size=0.05, random_state=42)
+         train_df, valid_df = train_test_split(partial_data, test_size=0.3, random_state=42)
+         train_data =TrainDataPrimeKg(train_df, args)
+         valid_data =TrainDataPrimeKg(valid_df, args,True)
+         
+        #  valid_data =ValidDataPrimeKg()
+    else:
+         train_path = os.path.join(args.data_path, args.data_name, "train.txt")
+         valid_path = os.path.join(args.data_path, args.data_name, "valid.txt")
+         train_data = TrainData(args,train_path)
+         valid_data = TrainData(args,valid_path, valdiation_time=True)
     # print(f"number relation in train data is {args.num_rel}")
     # print(f"number relation in train data is {args.num_rel}")
     args.num_rel= train_data.num_relations
-    valid_data = TrainData(args,valid_path, valdiation_time=True)
    
     # embedding  = train_data.train_model_graph()
 
@@ -41,11 +52,9 @@ def main():
         os.makedirs(f"./dataset/ckpt/{args.exp}/{args.data_name}", exist_ok=True)
         os.makedirs(f"dataset/result/{args.data_name}/", exist_ok=True)
     file_format = f"lr_{args.learning_rate}_dim_{args.dimension_entity}_{args.dimension_relation}" + \
-                f"_bin_{args.num_bin}_total_{args.num_epoch}_every_{args.validation_epoch}" + \
+                f"_total_{args.num_epoch}_every_{args.validation_epoch}" + \
                 f"_neg_{args.num_neg}_layer_{args.num_layer_ent}_{args.num_layer_rel}" + \
-                f"_hid_{args.hidden_dimension_ratio_entity}_{args.hidden_dimension_ratio_relation}" + \
-                f"_head_{args.num_head}_margin_{args.margin}"
-    
+                f"_margin_{args.margin}"
     epochs = args.num_epoch
     valid_epochs = args.validation_epoch
     num_neg = args.num_neg

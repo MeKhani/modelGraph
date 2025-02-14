@@ -60,7 +60,7 @@ def evaluate1( my_model, target,epoch):
         tail_ranks = []
         ranks = []
         result ={}
-        triplets=torch.tensor(target.triplets)
+        triplets=torch.tensor(target.triples)
         for triplet in triplets:
             triplet = triplet.unsqueeze(dim = 0)
 

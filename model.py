@@ -253,7 +253,7 @@ class WeightedGraphAutoEncoder1(nn.Module):
         # print(f"input feature is  in gnn {in_feats}")
         hidden_feats =args.dimension_entity
         out_feats =args.dimension_entity
-        self.encoder = GCNWithWeightEdge(hidden_feats, hidden_feats, out_feats)
+        self.encoder = GCNWithWeightEdge(hidden_feats, hidden_feats, 2*out_feats)
         self.decoder = DotProductDecoder()
     
    def forward(self, graph, features):

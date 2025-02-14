@@ -14,8 +14,10 @@ from tool import (
       weidner_dgl_graph,
       weidner_dgl_graph_torch_fast,
       WiDNeR,
+      extract_triples,
     
 )
+import pandas as pd
 from torch.optim import Adam
 from tqdm import tqdm
 import torch
@@ -35,28 +37,31 @@ class TrainData():
         print(f"Loading {path} data...")
         # Read and process triplets
         if "nell" in args.data_name.lower() :
-              id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id = read_triplet_nell(path)
+              id2ent, id2rel, self.triples, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id = read_triplet_nell(path)
               endic, en_dic_id,self.ent_type = divid_entities_by_type_nell(id2ent, en2id)
         elif "fb" in args.data_name.lower():
             #   id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,en_dic_id,self.ent_type = read_triplet_fb(path)
-              id2ent, id2rel, self.triplets, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,self.ent_type = read_triplet_fb_v1(path)
+              id2ent, id2rel, self.triples, en2id, rel2id ,self.rel_info, self.pair_info ,self.spanning ,self.triplets2id,self.ent_type = read_triplet_fb_v1(path)
             #   print(f"lenght of type of entities is {len(en_dic_id)}")
         
         self.num_relations = args.num_rel if valdiation_time else len(id2rel)
         print(f"then number of realtion is {len(rel2id)}")
         # rel_graph  = weidner_dgl_graph(self.triplets,self.pair_info)
-        self.rel_graph  = weidner_dgl_graph_torch_fast(self.pair_info, args)
-        print(self.rel_graph)
+        self.rel_graph =[]
+        if args.add_rel_graph==1:
+              self.rel_graph  = weidner_dgl_graph_torch_fast(self.pair_info, args)
+              print(self.rel_graph)
+        
             
          # Extract relations and create graph
-        self.graph  = create_main_graph(self.triplets) 
+        self.graph  = create_main_graph(self.triples) 
         # entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples(en_dic_id,self.triplets,self.ent_type)
-        entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples_v1(self.triplets,self.ent_type,self.num_relations)
+        entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples_v1(self.triples,self.ent_type,self.num_relations)
         model_graph = create_graph(entity_type_triples)
        
         # Add features to the graph
         self.num_ent = self.graph.num_nodes()
-        self.num_triplets = len(self.triplets)
+        self.num_triples = len(self.triples)
         # print("number relations:", num_relations)
         
         # rel_net=WiDNeR(path)
@@ -70,7 +75,7 @@ class TrainData():
         self.args =args
         self.adj_true = model_graph.adjacency_matrix().to_dense()
         self.filter_dict = {}
-        for triplet in self.triplets:
+        for triplet in self.triples:
             h,r,t = triplet
             if ('_', r, t) not in self.filter_dict:
                 self.filter_dict[('_', r, t)] = [h]
@@ -108,12 +113,12 @@ class TrainData():
 
             # start = time.time()
 
-            sup = [self.triplets[idx] for idx, tf in enumerate(remaining_triplet_indexes) if tf]
+            sup = [self.triples[idx] for idx, tf in enumerate(remaining_triplet_indexes) if tf]
             
             msg = np.array(msg)
             random.shuffle(sup)
             sup = np.array(sup)
-            add_num = max(int(self.num_triplets * p) - len(msg), 0)
+            add_num = max(int(self.num_triples * p) - len(msg), 0)
             msg = np.concatenate([msg, sup[:add_num]])
             sup = sup[add_num:]
 
@@ -240,6 +245,90 @@ class ValidationData():
 		msg_triplets = msg_triplets + msg_inv_triplets
 
 		return id2ent, id2rel, np.array(msg_triplets), np.array(sup_triplets), filter_dict
+class TrainDataPrimeKg():
+      def __init__(self, df, args, valdiation_time = False):
+            
+            self.triples,self.ent_type,self.pair_info, self.rel_info,num_relations, self.spanning , self.triplets2id = extract_triples(df)
+            self.rel_graph =[]
+            self.num_relations = args.num_rel if valdiation_time else num_relations
+            args.num_rel = self.num_relations
+            # if args.add_rel_graph==1:
+            #     self.rel_graph  = weidner_dgl_graph_torch_fast(self.pair_info, args)
+            # print(f"the primekg triple is {self.triples }")
+            self.graph  = create_main_graph(self.triples) 
+            # entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples(en_dic_id,self.triplets,self.ent_type)
+            entity_type_triples ,inner_rel ,output_relations,input_relations = generate_group_triples_v1(self.triples,self.ent_type,self.num_relations)
+            model_graph = create_graph(entity_type_triples)
+        
+            # Add features to the graph
+            self.num_ent = self.graph.num_nodes()
+            self.num_triplets = len(self.triples)
+            
+            self.model_graph = add_feature_to_graph_nodes(model_graph, inner_rel,output_relations,input_relations, self.num_relations)
+            # self.model_graph = add_feature_to_graph_edges(model_graph, entity_type_triples, self.num_relations)
+            print(f"the model graph is {self.model_graph}")
+            print(f"the main  graph is {self.graph}")
+            self.node_features = model_graph.ndata["feat"]
+            # self.edge_features = model_graph.edata["rel_feat"]
+            self.args =args
+            # self.adj_true = model_graph.adjacency_matrix().to_dense()
+            self.filter_dict = {}
+            for triplet in self.triples:
+                h,r,t = triplet
+                if ('_', r, t) not in self.filter_dict:
+                    self.filter_dict[('_', r, t)] = [h]
+                else:
+                    self.filter_dict[('_', r, t)].append(h)
+
+                if (h, '_', t) not in self.filter_dict:
+                    self.filter_dict[(h, '_', t)] = [r]
+                else:
+                    self.filter_dict[(h, '_', t)].append(r)
+                    
+                if (h, r, '_') not in self.filter_dict:
+                    self.filter_dict[(h, r, '_')] = [t]
+                else:
+                    self.filter_dict[(h, r, '_')].append(t)
+      def split_transductive(self, p):
+                msg, sup = [], []
+
+                rels_encountered = np.zeros(self.num_relations)
+                remaining_triplet_indexes = np.ones(self.num_triplets)
+
+                for h,t in self.spanning:
+                    r = random.choice(list(self.rel_info[(h, t)]))  # ✅ Convert set to list before sampling
+                    msg.append((h, r, t))
+                    remaining_triplet_indexes[self.triplets2id[(h,r,t)]] = 0
+                    rels_encountered[r] = 1
+
+
+                for r in (1-rels_encountered).nonzero()[0].tolist():
+                    h,t = random.choice(self.pair_info[int(r)])
+                    msg.append((h, r, t))
+                    remaining_triplet_indexes[self.triplets2id[(h,r,t)]] = 0
+
+                # start = time.time()
+
+                sup = [self.triples[idx] for idx, tf in enumerate(remaining_triplet_indexes) if tf]
+                
+                msg = np.array(msg)
+                random.shuffle(sup)
+                sup = np.array(sup)
+                add_num = max(int(self.num_triplets * p) - len(msg), 0)
+                msg = np.concatenate([msg, sup[:add_num]])
+                sup = sup[add_num:]
+
+                msg_inv = np.fliplr(msg).copy()
+                msg_inv[:,1] += self.num_relations
+                msg = np.concatenate([msg, msg_inv])
+
+                return msg, sup
+
+                    
+
+
+            
+            
        
 
 
